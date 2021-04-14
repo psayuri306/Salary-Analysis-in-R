@@ -1,0 +1,333 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+#loading the data
+```{r}
+data = read.csv("datasalaries.csv", header=T)
+```
+
+#Cleaning and Pruning data
+```{r}
+# REMOVE JOB TITLES WITH A FREQUENCY OF >3
+#install.packages('plyr')
+library(plyr)
+count(data, 'JobTitle')
+#changed all the frequencies that have 1 or 2 and remove those rows. could change them but could slightly affect the data since principal's are various specific titles are paid a little differently.
+datasalary = subset(data, !JobTitle=="Analytics consultant" & !JobTitle=="Consultant" & !JobTitle=="Database Specialist" & !JobTitle=="DBA / BI Developer" & !JobTitle=="DBA / BI Developer" & !JobTitle=="DevOps, Sr Software Engineer DBA" & !JobTitle=="Principal database engineer" &  !JobTitle=="Sales" &!JobTitle=="Sr Consultant " & !JobTitle=="Systems Administrator" & !JobTitle=="Technician ")
+count(datasalary, 'JobTitle')
+
+#RENAME A FEW JOB TITLES TO BE SHORTER
+datasalary$JobTitle[datasalary$JobTitle == "DBA (General - splits time evenly between writing & tuning queries AND building & troubleshooting servers)"] = "DBA (General)"
+datasalary$JobTitle[datasalary$JobTitle == "DBA (Development Focus - tunes queries, indexes, does deployments)"] = "DBA (Development)"
+datasalary$JobTitle[datasalary$JobTitle == "DBA (Production Focus - build & troubleshoot servers, HA/DR)"] = "DBA (Production)"
+datasalary$JobTitle[datasalary$JobTitle == "Developer: Business Intelligence (SSRS, PowerBI, etc)"] = "Developer: BI"
+datasalary$JobTitle[datasalary$JobTitle == "Developer: App code (C#, JS, etc)"] = "Developer: App Code"
+
+# TURN SALARIES INTO NUMERIC AND REMOVE NA'S
+sals = as.numeric(datasalary$SalaryUSD)
+any(is.na(sals))
+datasalary = datasalary[!is.na(sals),]
+datasalary$salary = sals[!is.na(sals)]
+
+# REMOVE OUTLIERS FROM SALARY
+boxplot(datasalary$salary)
+boxplot(datasalary$salary, plot=FALSE)$out
+outliers <- boxplot(datasalary$salary, plot=FALSE)$out
+datasalary<- datasalary[-which(datasalary$salary %in% outliers),]
+boxplot(datasalary$salary)
+
+#REMOVE OUTLIERS FROM YEARSWITHTHISDATABASE
+boxplot(datasalary$YearsWithThisDatabase)
+boxplot(datasalary$YearsWithThisDatabase, plot=FALSE)$out
+outliers <- boxplot(datasalary$YearsWithThisDatabase, plot=FALSE)$out
+datasalary<- datasalary[-which(datasalary$YearsWithThisDatabase %in% outliers),]
+boxplot(datasalary$YearsWithThisDatabase)
+
+#REMOVE OUTLIERS FROM HoursWorkedPerWeek
+boxplot(datasalary$HoursWorkedPerWeek)
+boxplot(datasalary$HoursWorkedPerWeek, plot=FALSE)$out
+outliers <- boxplot(datasalary$HoursWorkedPerWeek, plot=FALSE)$out
+datasalary<- datasalary[-which(datasalary$HoursWorkedPerWeek %in% outliers),]
+boxplot(datasalary$HoursWorkedPerWeek)
+
+#SUBSET FOR YEAR 2019
+data2019 = subset(datasalary, Survey.Year == "2019" )
+data2019 = subset(data2019, Gender == "Female" | Gender == "Male")
+```
+
+#Problem 1
+```{r}
+# introduction - distribution of salaries
+min_sal = min(datasalary$salary)
+max_sal = max(datasalary$salary)
+bins = seq(min_sal, max_sal, (max_sal - min_sal)/10)
+hist(datasalary$salary, breaks = bins, main = "Histogram of Salary", xlab = "Salary")
+
+#a.	How do median salaries compare with the different job titles?
+library(ggplot2)
+agg = data.frame(aggregate(datasalary$salary ~ datasalary$JobTitle, data = datasalary, FUN = median))
+ggplot(data=agg, aes(x=datasalary.salary, y=datasalary.JobTitle)) + geom_bar(stat='identity') +geom_text(aes(label=datasalary.salary), hjust=1.2, color="white", size=3) + labs(x = "Salary",y = "Job Title", title = "Bar Chart of Median Salaries of Job Titles")
+
+#b.	What’s the highest paying job title? 
+ggplot(data=datasalary, aes(x=salary, y=JobTitle, fill=salary)) + geom_boxplot() +labs(x = "Salary",y = "Job Title", title = "Boxplot of Salaries of Job Titles")
+
+#c. What is the most popular job?
+count(datasalary, 'JobTitle')
+
+#d. Does hours worked per week differ amongst job titles?
+ggplot(data=datasalary, aes(x=HoursWorkedPerWeek, y=JobTitle, fill=salary)) + geom_boxplot() +labs(x = "HoursWorkedPerWeek",y = "Job Title", title = "Boxplot of HoursWorkedPerWeek of Job Titles")
+
+#e.Take a look at gender, is there anything noteworthy regarding salary? Do some jobs have more males? Are males paid more? 
+job_gen_tab = table(data2019$JobTitle , data2019$Gender)
+prop_jobgen = prop.table(job_gen_tab,1) # proportions by row
+#                        Female       Male
+#  Analyst             0.09090909 0.90909091
+#  Architect           0.06250000 0.93750000
+#  Data Scientist      0.00000000 1.00000000
+#  DBA (Development)   0.09259259 0.90740741
+#  DBA (General)       0.09589041 0.90410959
+#  DBA (Production)    0.08661417 0.91338583
+#  Developer: App Code 0.00000000 1.00000000
+#  Developer: BI       0.07547170 0.92452830
+#  Developer: T-SQL    0.09459459 0.90540541
+#  Engineer            0.12500000 0.87500000
+#  Manager             0.05128205 0.94871795
+#  Other               0.16666667 0.83333333
+
+```
+
+#Problem 2
+```{r}
+#a. Any relevance with salary, years of experience, and hours worked?
+#quick check for any correlations?
+library(gpairs)
+gpairs(datasalary[,c("salary", "YearsWithThisTypeOfJob", "HoursWorkedPerWeek")])
+
+
+#b. Is salary dependent on the number of years of experience?
+cor.test(datasalary$salary, datasalary$YearsWithThisTypeOfJob)
+# Null Hypo: Correlation between features is 0
+# Alt Hypo: Correlation between features is not 0
+# p-value = 2.2e-16
+# correlation : 0.2004782
+# Conclusion: There is statistically significant correlation between salary and years of experience
+
+#c
+# linear regression
+reg_model = lm(data = datasalary, salary ~ YearsWithThisTypeOfJob) 
+summary(reg_model)
+# Salary = 77979.68 + YearsWithThisTypeOfJob * 1120.54
+# Adjusted R-squared:  0.03967  
+# p-value: < 2.2e-16
+
+# examining the regression
+reg_model$coefficients # gets the coeff. of the model
+reg_model$fitted.values # what the model predicts for each point
+mean(abs(reg_model$residuals)) #for the error = 27344.19
+summary(reg_model) # Can read off if coeff. are stat. sign. diff. from 0
+
+# check assumptions
+par(mfrow = c(2,2))
+plot(reg_model)
+par(mfrow = c(1,1))
+# 1. Linearity - the points are symmetric and its evenly vertically distributed across the origin. 
+# 2. Constant Variance - the points do seem to have a cone shape. where as the fitted values get larger, less and less points exist.
+# 3. Normality - the qqplot seems very good, the diagonal line is linear with a little elongation by the extremes.
+# 4. Independence - p val is very small,  strong evidence against this assumption.
+library(lmtest)
+dwtest(reg_model) # p-value = 3.065e-15
+
+# plotting
+plot(data = datasalary, salary ~ YearsWithThisTypeOfJob)
+abline(reg_model, col = "red", lwd = 2) # Adds a regression line
+
+#d
+#improving the regression
+reg_model_2 = lm(data = datasalary, salary ~ YearsWithThisTypeOfJob + HoursWorkedPerWeek + YearsWithThisDatabase) # linear regression
+summary(reg_model_2)
+#p-value = 2.2e-16
+#r-squared value = 0.2083
+# years with this type of job is the only variable not significant. tells us that there isn't much correlation between this variable and salary even when other terms are added
+
+
+#e. Are there any groups within a comparison of salary and years of experience?
+features = c("salary", "YearsWithThisTypeOfJob", "YearsWithThisDatabase")
+new_data = datasalary
+new_data[,features] = data.frame(scale(datasalary[,features]))
+plot(data = new_data, salary ~ YearsWithThisTypeOfJob, col = as.factor(new_data))
+
+#elbow method
+cluster_perf = rep(0, 15)
+for(i in 1:15){
+   curr_clust = kmeans(new_data[,features], centers = i)
+   cluster_perf[i] = curr_clust$tot.withinss
+}
+plot(1:15, cluster_perf, xlab = "# of Clusters", ylab = "Tot SS", main = "# Clust vs Performance")
+# k = 3 is the best number of clusters
+
+clust_3 = kmeans(new_data[,features], 3)
+
+par(mfrow = c(2,1))
+pairs(new_data[,features], col=clust_3$cluster)
+pairs(new_data[,features], col=as.factor(new_data))
+par(mfrow = c(1,1))
+plot(data = new_data, salary ~ YearsWithThisTypeOfJob, col = clust_3$cluster, main="Clusters of Salary and Job Experience")
+
+#f - hierarchical clustering
+hcluster3 = hclust(dist(as.matrix(new_data[,features])), method = "single")
+hclust3_labels = cutree(hcluster3, 3)
+pairs(new_data[, features], col = hclust3_labels)
+```
+
+
+#Problem 3a.
+```{r}
+# a.
+# Is there a significant difference between the different city/town sizes?
+tab1 = table(data2019$PopulationOfLargestCityWithin20Miles)
+# <= 20,000 (town)     16
+# 20K-99K (large town)  61 
+# 100K-299K (city)      145  
+# 300K-1M (large city)  231 
+# 1M+ (metropolis)     244
+
+```
+
+#Problem 3b.
+```{r}
+#d
+city = subset(data2019, PopulationOfLargestCityWithin20Miles == "300K-1M (large city)" | PopulationOfLargestCityWithin20Miles== "100K-299K (city)")
+
+## Hypo Test: Two sample t-test
+## Assumptions: Independence across samples, normality in sample
+## Null Hypo: The mean salary is the same between employees who live in city and large city
+## Alt Hypo: The mean salary is the higher for employees who live in the large city
+
+test_ttest1 = t.test(city$salary ~ city$PopulationOfLargestCityWithin20Miles, alternative = "less")
+# p-value = 0.01547
+# Test stat = city - large city =   81611.41  -   90119.93 
+# One sided CI: (-Inf -3073.141)
+# Conclusion: There is statistically significant evidence that salaries are higher in the larger city of 300k-1M rather than a city of size 100k-299k. We reject the null hypothesis.
+
+# Checking the assumptions
+# 1. Independence is fine, they're different people.
+# 2. Normality
+par(mfrow = c(1,2))
+qqnorm(city$salary[city$PopulationOfLargestCityWithin20Miles == "300K-1M (large city)" ])
+qqnorm(city$salary[city$PopulationOfLargestCityWithin20Miles == "100K-299K (city)" ])
+par(mfrow = c(1,1))
+# Our qqplots suggests the data is normal in both samples. The line is pretty linear although it is alittle stretched out in the extremes.
+
+#e 
+#What about a metropolis and a large city ?
+metro = subset(data2019, PopulationOfLargestCityWithin20Miles == "1M+ (metropolis)" | PopulationOfLargestCityWithin20Miles == "300K-1M (large city)" )
+
+## Hypo Test: Two sample t-test
+## Assumptions: Independence across samples, normality in sample
+## Null Hypo: The mean salary is the same between employees who live in metro and large city
+## Alt Hypo: The mean salary is the higher for employees who live in the metro
+
+test_ttest2 = t.test(metro$salary ~ metro$PopulationOfLargestCityWithin20Miles, alternative = "less")
+# p-value = 0.9184
+# Test stat = metropolis - large city =  94620.27  - 90119.93 
+# One sided CI: (-Inf 9810.057)
+# Conclusion: There is statistically significant evidence that mean salaries are same in the metropolis of 1M+ and a large city of size of 300k-1M. We accept the null hypothesis.
+
+# Checking the assumptions
+# 1. Independence is fine, they're different people.
+# 2. Normality
+par(mfrow = c(1,2))
+qqnorm(city$salary[metro$PopulationOfLargestCityWithin20Miles == "1M+ (metropolis)" ])
+qqnorm(city$salary[metro$PopulationOfLargestCityWithin20Miles == "300K-1M (large city)" ])
+par(mfrow = c(1,1))
+# Our qqplots suggests the data is normal in both samples. The line is pretty linear although it is a little stretched out in the extremes.
+```
+
+#Problem 3c. Do some countries have significantly higher salaries than others? 
+```{r}
+#f
+# Will be comparing the top two countries with the highest frequencies - United States and United Kingdom
+count(datasalary, 'Country')
+uk_us = subset(datasalary, Country == "United Kingdom" | Country == "United States" )
+#United Kingdom  588
+#United States 3261
+
+```
+
+#Problem 3d. What about different hours worked per week? Different work from home trends? Does the salary and years of experience vary in countries?
+```{r}
+#h
+boxplot(uk_us$HoursWorkedPerWeek ~ uk_us$Country, main="Hours Worked Per Week in UK and US", xlab = "Country", ylab = "Hours Worked Per Week") # us is higher
+
+#j
+boxplot(datasalary$HoursWorkedPerWeek ~ datasalary$Country, main="Hours Worked Per Week in 77 Different Countries", xlab="Countries", ylab="Hours Worked Per Week") #even the hours worked per week are pretty different. but its really important to know that some countries have really low numbers. 
+
+#k
+# does the salary and years of experience vary in the top two countries?
+plot(uk_us$salary[uk_us$Country=="United States"] ~ uk_us$YearsWithThisTypeOfJob[uk_us$Country=="United States"], col = "red", xlim = c(0,max(uk_us$YearsWithThisTypeOfJob)), ylim = c(0, max(uk_us$salary)), xlab = "Years With This Type of Job", ylab = "Salary", main = "Salary and Years of Experience in the UK and US")
+par(new = T)
+plot(uk_us$salary[uk_us$Country=="United Kingdom"] ~ uk_us$YearsWithThisTypeOfJob[uk_us$Country=="United Kingdom"], col = "blue", xlim = c(0,max(uk_us$YearsWithThisTypeOfJob)), ylim = c(0, max(uk_us$salary)), xlab ="", ylab = "")
+legend(35, 180000, legend=c("US", "UK"), col = c("red", "blue"), cex = 1, pch = 0)
+
+```
+
+not using
+```{r}
+
+#i
+boxplot(uk_us$telecommute ~ uk_us$Country, main="Days Worked From Home in UK and US", xlab = "Country", ylab = "Days Worked From Home") #both pretty much the same. dont wanna do a ttest cuz don't care that much
+
+boxplot(uk_us$salary ~ uk_us$Country, main = "Boxplot of Salary in the UK and US", xlab = "Country", ylab = "Salary")
+
+
+#b
+## Null Hypothesis: Same number in each city/town size
+## Alt Hypothesis: Stat. signif. different number in each city/town size
+test_chiq1= chisq.test(tab1)
+# Test stat: X-squared = 292.23
+# pval = < 2.2e-16
+# Conclusion: There are statistically significantly different number of employees across each town city
+
+#c
+#what about people who live in areas of greater than 100k?
+hundredk = subset(data2019, PopulationOfLargestCityWithin20Miles == "300K-1M (large city)"
+ | PopulationOfLargestCityWithin20Miles== "100K-299K (city)" |PopulationOfLargestCityWithin20Miles == "1M+ (metropolis)" )
+
+tab2 = table(hundredk$PopulationOfLargestCityWithin20Miles)
+max(tab2) # 1M+ (metropolis) is the largest with frequency of 235  
+min(tab2) # 100K-299K (city) is the smallest with frequency of 141
+
+## Null Hypothesis: Same number in each city/town size
+## Alt Hypothesis: Stat. signif. different number in each city/town size
+test_chiq2= chisq.test(tab2)
+# Test stat: X-squared = 28.01
+# pval = < 3.102e-11
+# Conclusion: There are statistically significantly different number of employees across each town city
+test_chiq2$observed 
+test_chiq2$expected #all observed and expected values are greater than 5, so the chi squared test was appropriate. 
+
+
+
+#g
+## Hypo Test: Two sample t-test
+## Assumptions: Independence across samples, normality in sample
+## Null Hypo: The mean salary is the same in US and UK
+## Alt Hypo: The mean salary is the higher in US than in UK
+
+test_ttest3 = t.test(uk_us$salary ~ uk_us$Country, alternative = "less")
+# p-value = 2.2e-16
+# Test stat = UK -  US =   62939.6  -   100734.6 
+# One sided CI: ( -Inf -35968.07)
+# Conclusion: There is statistically significant evidence that salaries are higher in the US than in the UK. Reject the null hypothesis. 
+
+# Checking the assumptions
+# 1. Independence is fine, they're different people.
+# 2. Normality
+par(mfrow = c(1,2))
+qqnorm(city$salary[uk_us$Country == "United Kingdom" ])
+qqnorm(city$salary[uk_us$Country == "United States" ])
+par(mfrow = c(1,1))
+# Our qqplots suggests the data is normal in both samples. The line is pretty linear although it is a little stretched out in the extremes. However the UK qqplot is a little weak with less data points but normality can be met.
+```
+
